@@ -1,6 +1,5 @@
 import React from "react";
 import { StorySettings } from "../types";
-import { Sliders, HelpCircle, Music2 } from "lucide-react";
 
 interface SettingsPanelProps {
   settings: StorySettings;
@@ -9,142 +8,142 @@ interface SettingsPanelProps {
   setSongContext: (context: string) => void;
 }
 
+const GENRES = [
+  { value: "Adaptive", label: "Adaptive (Match the song)" },
+  { value: "Noir & Psychological Thriller", label: "Noir & Psychological Thriller" },
+  { value: "Sci-Fi & Speculative", label: "Sci-Fi & Speculative Fiction" },
+  { value: "Literary Realism", label: "Literary Realism" },
+  { value: "Victorian & Chamber Gothic", label: "Victorian & Chamber Gothic" },
+  { value: "Dark Mythic Fantasy", label: "Dark Mythic Fantasy" },
+  { value: "Magical Realism", label: "Poetic Magical Realism" },
+];
+
+const TONES = [
+  { value: "Adaptive", label: "Adaptive (Match acoustic mood)" },
+  { value: "Melancholic & Haunting", label: "Melancholic & Haunting" },
+  { value: "Tense & Suspenseful", label: "Tense & Suspenseful" },
+  { value: "Radiant & Redemptive", label: "Radiant & Redemptive" },
+  { value: "Sparse & Unsentimental", label: "Sparse & Unsentimental" },
+  { value: "Dreamlike & Surreal", label: "Dreamlike & Surreal" },
+  { value: "Elegiac & Mythic", label: "Elegiac & Mythic" },
+];
+
+const ERAS = [
+  { value: "Adaptive", label: "Adaptive (Match lyrical world)" },
+  { value: "Classical Antiquity", label: "Classical Antiquity" },
+  { value: "Victorian / Gilded Age", label: "Victorian / Gilded Age" },
+  { value: "Mid-20th Century (1940s–1970s)", label: "Mid-20th Century (1940s–1970s)" },
+  { value: "Contemporary Present", label: "Contemporary Present" },
+  { value: "Retro-Futurist / Far Future", label: "Retro-Futurist / Far Future" },
+];
+
 export default function SettingsPanel({
   settings,
   setSettings,
   songContext,
   setSongContext,
 }: SettingsPanelProps) {
-  const genres = [
-    { value: "Adaptive", label: "🎨 Plan Organically (Match Song Style)" },
-    { value: "Noir & Hardboiled Thriller", label: "🕶️ Noir & Hardboiled Thriller" },
-    { value: "Sci-Fi & Cyberpunk", label: "🤖 Sci-Fi & Cyberworld" },
-    { value: "Epic Dark Fantasy", label: "🐉 Epic Dark Fantasy" },
-    { value: "Chamber Victorian Gothic", label: "🕯️ Victorian Gothic Drama" },
-    { value: "Melodramatic Tragedy", label: "🥀 Melodramatic Tragedy" },
-    { value: "Magical Realism", label: "💫 Poetic Magical Realism" }
-  ];
-
-  const tones = [
-    { value: "Adaptive", label: "🔊 Dynamic (Match Acoustic Vibe)" },
-    { value: "Melancholic & Haunting", label: "🥀 Melancholic & Haunting" },
-    { value: "Tense & Suspenseful", label: "⚡ Tense & High-Suspense" },
-    { value: "Uplifting & Radiant", label: "☀️ Uplifting & Radiant" },
-    { value: "Gritty & Cynical", label: "🚬 Gritty & Cynical" },
-    { value: "Ethereal & Dreamlike", label: "💭 Ethereal & Dreamlike" },
-    { value: "Symphonic & Mythological", label: "🏛️ Symphonic & Mythological" }
-  ];
-
-  const eras = [
-    { value: "Adaptive", label: "⏳ Adaptive Historical Era" },
-    { value: "Medieval Antiquity", label: "🛡️ Medieval / Classical Antiquity" },
-    { value: "Gilded Victorian Age", label: "👗 Gilded / Victorian Era" },
-    { value: "Mid-20th Century Retrospect", label: "📻 1940s - 1970s Retro" },
-    { value: "The Modern Grid", label: "📱 Contemporary Modern Day" },
-    { value: "Hypertech Neo-Future", label: "🚀 Far Future / Cybernetic Era" }
-  ];
-
   const handleSettingChange = (key: keyof StorySettings, value: string) => {
     setSettings((prev) => ({
       ...prev,
-      [key]: value
+      [key]: value,
     }));
   };
 
   return (
-    <div className="bg-[#0b0c10]/70 backdrop-blur-md rounded-2xl border border-white/10 p-6 shadow-xl shadow-black/40 h-full flex flex-col justify-between" id="settings-panel">
-      <div>
-        <div className="flex items-center gap-3 border-b border-white/10 pb-4 mb-5">
-          <div className="p-2 bg-indigo-500/10 text-indigo-400 rounded-lg border border-indigo-500/20">
-            <Sliders className="w-5 h-5" />
-          </div>
-          <div>
-            <h3 className="font-display font-bold text-white text-base uppercase tracking-wider">Plot Adapters</h3>
-            <p className="text-[11px] text-slate-450">Configure parameters to customize the storyplot output</p>
-          </div>
+    <div
+      className="rounded-xl bg-[#111114] border border-[#242429] p-6"
+      id="settings-panel"
+    >
+      <div className="flex flex-col sm:flex-row sm:items-baseline justify-between gap-2 pb-4 border-b border-[#242429] mb-5">
+        <h3 className="font-display text-lg font-medium text-[#F4F3EE]">
+          Adaptation Direction
+        </h3>
+        <span className="text-xs text-[#9898A2]">
+          Shape the genre, emotional register, and historical setting
+        </span>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+        <div>
+          <label
+            htmlFor="genre-select"
+            className="block text-xs font-medium text-[#9898A2] mb-2"
+          >
+            Literary Genre
+          </label>
+          <select
+            id="genre-select"
+            value={settings.genre}
+            onChange={(e) => handleSettingChange("genre", e.target.value)}
+            className="w-full min-h-[42px] bg-[#0C0C0F] border border-[#242429] rounded-lg px-3.5 py-2 text-sm text-[#F4F3EE] focus:outline-none focus:border-[#E5A93B] transition-editorial cursor-pointer [&>option]:bg-[#111114] [&>option]:text-[#F4F3EE]"
+          >
+            {GENRES.map((g) => (
+              <option key={g.value} value={g.value}>
+                {g.label}
+              </option>
+            ))}
+          </select>
         </div>
 
-        <div className="space-y-4">
-          {/* Genre option */}
-          <div>
-            <label className="block text-[10px] font-mono font-semibold text-slate-400 uppercase tracking-widest mb-1.5">
-              Target Literary Genre
-            </label>
-            <select
-              value={settings.genre}
-              onChange={(e) => handleSettingChange("genre", e.target.value)}
-              className="w-full bg-white/5 border border-white/10 rounded-xl px-3 py-2 text-xs text-slate-200 font-sans focus:outline-hidden focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all cursor-pointer [&>option]:bg-[#0c0d12] [&>option]:text-slate-200"
-            >
-              {genres.map((g) => (
-                <option key={g.value} value={g.value}>
-                  {g.label}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          {/* Narrative Tone option */}
-          <div>
-            <label className="block text-[10px] font-mono font-semibold text-slate-400 uppercase tracking-widest mb-1.5">
-              Tone Alignment
-            </label>
-            <select
-              value={settings.tone}
-              onChange={(e) => handleSettingChange("tone", e.target.value)}
-              className="w-full bg-white/5 border border-white/10 rounded-xl px-3 py-2 text-xs text-slate-200 font-sans focus:outline-hidden focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all cursor-pointer [&>option]:bg-[#0c0d12] [&>option]:text-slate-200"
-            >
-              {tones.map((t) => (
-                <option key={t.value} value={t.value}>
-                  {t.label}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          {/* Setting Era option */}
-          <div>
-            <label className="block text-[10px] font-mono font-semibold text-slate-400 uppercase tracking-widest mb-1.5">
-              Temporal setting Era
-            </label>
-            <select
-              value={settings.era}
-              onChange={(e) => handleSettingChange("era", e.target.value)}
-              className="w-full bg-white/5 border border-white/10 rounded-xl px-3 py-2 text-xs text-slate-200 font-sans focus:outline-hidden focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all cursor-pointer [&>option]:bg-[#0c0d12] [&>option]:text-slate-200"
-            >
-              {eras.map((er) => (
-                <option key={er.value} value={er.value}>
-                  {er.label}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          {/* Context Input */}
-          <div>
-            <div className="flex items-center justify-between mb-1.5">
-              <label className="block text-[10px] font-mono font-semibold text-slate-400 uppercase tracking-widest">
-                Artist / Context Notes (Optional)
-              </label>
-              <div className="group relative">
-                <HelpCircle className="w-3.5 h-3.5 text-slate-500 hover:text-slate-400 cursor-help" />
-                <div className="absolute right-0 bottom-full mb-2 w-64 bg-slate-900 border border-white/10 text-slate-300 text-[11px] p-2.5 rounded-lg opacity-0 pointer-events-none group-hover:opacity-100 transition-opacity z-50 shadow-xl leading-relaxed">
-                  Provide the song title, artist, or any particular theme/meaning you want the AI writer to synthesize or stick to.
-                </div>
-              </div>
-            </div>
-            <div className="relative">
-              <textarea
-                className="w-full bg-white/5 border border-white/10 rounded-xl p-3 text-xs text-slate-200 font-sans placeholder-slate-500 focus:outline-hidden focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all h-20 resize-none"
-                placeholder="e.g. 'Bohemian Rhapsody by Queen. Focus on themes of guilt and escaping justice.' or 'A melancholic synthwave song about running away together.'"
-                value={songContext}
-                onChange={(e) => setSongContext(e.target.value)}
-              />
-              <div className="absolute right-3 bottom-3 text-slate-600">
-                <Music2 className="w-3.5 h-3.5" />
-              </div>
-            </div>
-          </div>
+        <div>
+          <label
+            htmlFor="tone-select"
+            className="block text-xs font-medium text-[#9898A2] mb-2"
+          >
+            Narrative Tone
+          </label>
+          <select
+            id="tone-select"
+            value={settings.tone}
+            onChange={(e) => handleSettingChange("tone", e.target.value)}
+            className="w-full min-h-[42px] bg-[#0C0C0F] border border-[#242429] rounded-lg px-3.5 py-2 text-sm text-[#F4F3EE] focus:outline-none focus:border-[#E5A93B] transition-editorial cursor-pointer [&>option]:bg-[#111114] [&>option]:text-[#F4F3EE]"
+          >
+            {TONES.map((t) => (
+              <option key={t.value} value={t.value}>
+                {t.label}
+              </option>
+            ))}
+          </select>
         </div>
+
+        <div>
+          <label
+            htmlFor="era-select"
+            className="block text-xs font-medium text-[#9898A2] mb-2"
+          >
+            Period &amp; Setting
+          </label>
+          <select
+            id="era-select"
+            value={settings.era}
+            onChange={(e) => handleSettingChange("era", e.target.value)}
+            className="w-full min-h-[42px] bg-[#0C0C0F] border border-[#242429] rounded-lg px-3.5 py-2 text-sm text-[#F4F3EE] focus:outline-none focus:border-[#E5A93B] transition-editorial cursor-pointer [&>option]:bg-[#111114] [&>option]:text-[#F4F3EE]"
+          >
+            {ERAS.map((er) => (
+              <option key={er.value} value={er.value}>
+                {er.label}
+              </option>
+            ))}
+          </select>
+        </div>
+      </div>
+
+      <div className="mt-5">
+        <label
+          htmlFor="context-notes"
+          className="block text-xs font-medium text-[#9898A2] mb-2"
+        >
+          Song Title, Artist, or Director Notes (Optional)
+        </label>
+        <input
+          id="context-notes"
+          type="text"
+          className="w-full min-h-[42px] bg-[#0C0C0F] border border-[#242429] rounded-lg px-3.5 py-2.5 text-sm text-[#F4F3EE] placeholder-[#686873] focus:outline-none focus:border-[#E5A93B] transition-editorial"
+          placeholder="e.g., 'Fast Car by Tracy Chapman — focus on intergenerational ambition and quiet heartbreak'"
+          value={songContext}
+          onChange={(e) => setSongContext(e.target.value)}
+        />
       </div>
     </div>
   );

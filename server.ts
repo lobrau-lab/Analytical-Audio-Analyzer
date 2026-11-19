@@ -1,3 +1,4 @@
+import "dotenv/config";
 import express from "express";
 import path from "path";
 import { GoogleGenAI, Type } from "@google/genai";
@@ -9,21 +10,42 @@ function getGeminiClient(): GoogleGenAI {
   if (!aiClient) {
     const key = process.env.GEMINI_API_KEY;
     if (!key) {
-      throw new Error("GEMINI_API_KEY is not defined in environment variables. Please add it via the Settings > Secrets menu.");
+      throw new Error(
+        "GEMINI_API_KEY is not configured. Please verify your key in Settings > Secrets."
+      );
     }
     aiClient = new GoogleGenAI({
       apiKey: key,
       httpOptions: {
         headers: {
-          'User-Agent': 'aistudio-build',
-        }
-      }
+          "User-Agent": "aistudio-build",
+        },
+      },
     });
   }
   return aiClient;
 }
 
-const responseSchema = {
+async function withRetry<T>(fn: () => Promise<T>, maxRetries = 2): Promise<T> {
+  let lastError: unknown;
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    try {
+      return await fn();
+    } catch (err: any) {
+      lastError = err;
+      const status = err?.status ?? err?.code;
+      const isRetryable = status === 429 || (typeof status === "number" && status >= 500);
+      if (!isRetryable || attempt === maxRetries) {
+        throw err;
+      }
+      const delayMs = 600 * Math.pow(2, attempt);
+      await new Promise((resolve) => setTimeout(resolve, delayMs));
+    }
+  }
+  throw lastError;
+}
+
+const analyzeResponseSchema = {
   type: Type.OBJECT,
   properties: {
     songAnalysis: {
@@ -32,264 +54,478 @@ const responseSchema = {
         themes: {
           type: Type.ARRAY,
           items: { type: Type.STRING },
-          description: "List of key thematic elements, motifs, or mood markers discovered in the song."
+          description: "4 to 6 concise thematic motifs discovered in the song.",
         },
         emotionalArc: {
           type: Type.STRING,
-          description: "Detail of how the emotions of the song shift, build, resolve, or spiral from the beginning to the end."
+          description:
+            "How the song's emotions shift, intensify, fracture, or resolve from opening bar to final fade.",
         },
         storytellingStyle: {
           type: Type.STRING,
-          description: "The stylistic type of the song, e.g., metaphor-heavy narrative, circular/repetitive, stream-of-consciousness, or a direct narrative."
+          description:
+            "Narrative perspective and poetic method (e.g., unreliable confessional, allegorical ballad, montage vignettes).",
+        },
+        musicalCues: {
+          type: Type.STRING,
+          description:
+            "Sonic texture, rhythmic pacing, vocal delivery, or implied harmonic tension translated into dramatic atmosphere.",
         },
         literalMeaning: {
           type: Type.STRING,
-          description: "Surface-level narrative. What is literally taking place in the lyrics or the audio's situational context?"
+          description: "Surface-level events literally taking place in the lyrics or audio context.",
         },
         hiddenMeaning: {
           type: Type.STRING,
-          description: "Deep symbolic interpretation, themes of subtext, underlying messages, allegories, or double meanings."
-        }
+          description: "Underlying allegory, psychological subtext, and double meanings.",
+        },
       },
-      required: ["themes", "emotionalArc", "storytellingStyle", "literalMeaning", "hiddenMeaning"]
+      required: [
+        "themes",
+        "emotionalArc",
+        "storytellingStyle",
+        "musicalCues",
+        "literalMeaning",
+        "hiddenMeaning",
+      ],
     },
     storyPlot: {
       type: Type.OBJECT,
       properties: {
         title: {
           type: Type.STRING,
-          description: "An elegant, captivating title for the story plot inspired by the song but suited for a standalone literary piece."
+          description: "An evocative, literary standalone title inspired by the song.",
+        },
+        logline: {
+          type: Type.STRING,
+          description: "A crisp 1-2 sentence prestige cinema or novel jacket logline.",
         },
         genre: {
           type: Type.STRING,
-          description: "The main genre used to structure the plot (matching user setting or adapted organically from the song)."
+          description: "Primary literary genre honoring user preference or adapted from the song.",
+        },
+        centralConflict: {
+          type: Type.STRING,
+          description: "The irreducible dramatic dilemma driving the entire story forward.",
         },
         setting: {
           type: Type.OBJECT,
           properties: {
-            description: { type: Type.STRING, description: "A rich, sensory description of the environment, location, or world where this story plot unfolds." },
-            era: { type: Type.STRING, description: "The timeline, historical period, futuristic era, or general epoch." },
-            mood: { type: Type.STRING, description: "The overarching emotional atmosphere or visual color of the setting." }
+            description: {
+              type: Type.STRING,
+              description: "Sensory-rich portrait of the world, geography, and architecture.",
+            },
+            era: {
+              type: Type.STRING,
+              description: "Historical epoch, contemporary milieu, or speculative era.",
+            },
+            mood: {
+              type: Type.STRING,
+              description: "Atmospheric signature (2-4 words, e.g., 'Amber Twilight Melancholy').",
+            },
+            sensoryDetails: {
+              type: Type.ARRAY,
+              items: { type: Type.STRING },
+              description: "3 vivid recurring sensory details (sound, light, scent, or tactile object).",
+            },
           },
-          required: ["description", "era", "mood"]
+          required: ["description", "era", "mood", "sensoryDetails"],
         },
         protagonist: {
           type: Type.OBJECT,
           properties: {
-            name: { type: Type.STRING, description: "Name of the protagonist." },
-            role: { type: Type.STRING, description: "Profession, status, or defining purpose of this character." },
-            backStory: { type: Type.STRING, description: "Deeply developed backstory framing the starting emotional/social conflict of the protagonist." },
-            arc: { type: Type.STRING, description: "Description of the protagonist's growth, deterioration, or change throughout this narrative." },
+            name: { type: Type.STRING, description: "Full name of the protagonist." },
+            role: { type: Type.STRING, description: "Vocation, station, or defining identity." },
+            desire: { type: Type.STRING, description: "What they urgently seek at the story's outset." },
+            flaw: { type: Type.STRING, description: "The internal blind spot or vulnerability holding them back." },
+            backStory: {
+              type: Type.STRING,
+              description: "Formative history establishing the character's opening pressure.",
+            },
+            arc: {
+              type: Type.STRING,
+              description: "How they transform, fracture, or awaken across the chapters.",
+            },
             traits: {
               type: Type.ARRAY,
               items: { type: Type.STRING },
-              description: "3 to 5 core personality traits or behavior patterns."
-            }
+              description: "3 to 5 sharp character traits.",
+            },
           },
-          required: ["name", "role", "backStory", "arc", "traits"]
+          required: ["name", "role", "desire", "flaw", "backStory", "arc", "traits"],
         },
         supportingCharacters: {
           type: Type.ARRAY,
           items: {
             type: Type.OBJECT,
             properties: {
-              name: { type: Type.STRING, description: "Name of the supporting character." },
-              role: { type: Type.STRING, description: "Their relationship, dynamic, or structural purpose to the protagonist's quest." },
-              definition: { type: Type.STRING, description: "Their primary traits and dramatic function in the plot." }
+              name: { type: Type.STRING, description: "Supporting character's name." },
+              role: { type: Type.STRING, description: "Dramatic foil, confidant, or catalyst role." },
+              definition: { type: Type.STRING, description: "Motivation and narrative friction with the protagonist." },
             },
-            required: ["name", "role", "definition"]
-          }
+            required: ["name", "role", "definition"],
+          },
         },
         chapters: {
           type: Type.ARRAY,
           items: {
             type: Type.OBJECT,
             properties: {
-              title: { type: Type.STRING, description: "Chapter or phase name (metaphorically aligned with key song markers, e.g., Verse 1 / Chorus / Outro)." },
-              summary: { type: Type.STRING, description: "Comprehensive, dramatic summary of the events occurring in this phase." },
-              keyMetaphor: { type: Type.STRING, description: "How a specific lyric, lyric's subtext, or musical sonic shift inspired this chapter's sequence." },
-              emotionalBeat: { type: Type.STRING, description: "The core conflict or internal emotional state of the character during this section." }
+              title: { type: Type.STRING, description: "Literary chapter title." },
+              songSection: {
+                type: Type.STRING,
+                description: "Corresponding musical movement (e.g., 'Intro', 'Verse I', 'Chorus', 'Bridge', 'Outro').",
+              },
+              summary: {
+                type: Type.STRING,
+                description: "Dramatic synopsis of the chapter's action and turning point.",
+              },
+              keyMetaphor: {
+                type: Type.STRING,
+                description: "Specific lyric image or sonic shift anchored to this chapter.",
+              },
+              emotionalBeat: {
+                type: Type.STRING,
+                description: "Concise emotional state (2-4 words, e.g., 'Quiet Dread', 'Euphoric Rupture').",
+              },
+              tensionScore: {
+                type: Type.INTEGER,
+                description: "Dramatic intensity score from 15 to 100 reflecting the song's dynamic arc.",
+              },
             },
-            required: ["title", "summary", "keyMetaphor", "emotionalBeat"]
-          }
+            required: [
+              "title",
+              "songSection",
+              "summary",
+              "keyMetaphor",
+              "emotionalBeat",
+              "tensionScore",
+            ],
+          },
         },
         conclusion: {
           type: Type.STRING,
-          description: "The poetic resolution, tragedy, or open-ended finale of the story that echoes the ending energy-signature of the track."
+          description: "Resonant literary finale echoing the song's closing cadence.",
         },
         lyricalConnections: {
           type: Type.ARRAY,
           items: {
             type: Type.OBJECT,
             properties: {
-              quoteOrTimestamp: { type: Type.STRING, description: "A concrete line from the lyrics, a key word, or an audio cue (such as 'The swelling violins' or 'The screeching electric solo')." },
-              narrativeTranslation: { type: Type.STRING, description: "Exactly how that specific lyrical or auditory moment was translated into a character trait, physical object, or plot shift." }
+              quoteOrTimestamp: {
+                type: Type.STRING,
+                description: "Specific lyric phrase or acoustic cue from the track.",
+              },
+              narrativeTranslation: {
+                type: Type.STRING,
+                description: "How that cue became a tangible story object, character quirk, or turning point.",
+              },
             },
-            required: ["quoteOrTimestamp", "narrativeTranslation"]
-          }
-        }
+            required: ["quoteOrTimestamp", "narrativeTranslation"],
+          },
+        },
       },
       required: [
         "title",
+        "logline",
         "genre",
+        "centralConflict",
         "setting",
         "protagonist",
         "supportingCharacters",
         "chapters",
         "conclusion",
-        "lyricalConnections"
-      ]
+        "lyricalConnections",
+      ],
     },
     suggestedPrompts: {
       type: Type.ARRAY,
       items: { type: Type.STRING },
-      description: "Exactly 3 distinct, compelling follow-up prompt suggestions that the user can run to explore a specific scene, draft a dialogue, or spin off an alternative ending."
-    }
+      description:
+        "Exactly 4 compelling scene prompts the writer can run in the Scene Desk (covering prose, dialogue, monologue, and alternate ending).",
+    },
   },
-  required: ["songAnalysis", "storyPlot", "suggestedPrompts"]
+  required: ["songAnalysis", "storyPlot", "suggestedPrompts"],
 };
+
+const MODE_INSTRUCTIONS: Record<string, string> = {
+  prose:
+    "Write rich, atmospheric literary fiction prose (300–480 words) with precise sensory details, subtext, and lyrical cadence. Output only the story prose without preambles or titles.",
+  screenplay:
+    "Write a vivid screenplay scene (300–480 words) using crisp sluglines (INT./EXT.), terse visual action lines, and subtext-heavy character dialogue. Output only the screenplay excerpt without meta-commentary.",
+  monologue:
+    "Write an intimate first-person interior monologue (250–400 words) from the protagonist's perspective at a pivotal moment, echoing the rhythm and imagery of the source song. Output only the monologue.",
+  alternate_ending:
+    "Write a haunting, surprising alternate ending (300–480 words) that inverts the story's established outcome while honoring every lyrical motif. Output only the narrative finale.",
+};
+
+const VALID_VOICES = new Set(["Charon", "Kore", "Fenrir", "Puck", "Zephyr"]);
 
 async function startServer() {
   const app = express();
   const PORT = 3000;
 
-  // Use large body parser limits to accommodate song audio files easily
   app.use(express.json({ limit: "60mb" }));
   app.use(express.urlencoded({ limit: "60mb", extended: true }));
 
-  // API router
+  // 1. Analyze Audio & Lyrics -> Structured Story Folio (gemini-4-hydrogen)
   app.post("/api/analyze", async (req, res) => {
     try {
-      const { fileData, fileName, mimeType, lyrics, context, storySettings } = req.body;
+      const { fileData, mimeType, lyrics, context, storySettings } = req.body;
 
-      if (!lyrics && !fileData) {
+      if (!lyrics?.trim() && !fileData) {
         return res.status(400).json({
-          error: "Incomplete input. Please provide either the song lyrics or an uploaded audio file to analyze."
+          error: "Provide song lyrics or upload an audio track to begin analysis.",
         });
       }
 
-      console.log(`Starting audio/lyric analysis. Audio: ${!!fileData}, Lyrics length: ${lyrics?.length || 0}`);
-
       const ai = getGeminiClient();
-
-      // Assemble content parts for multimodal input
       const contentsParts: any[] = [];
 
       if (fileData && mimeType) {
         contentsParts.push({
           inlineData: {
             data: fileData,
-            mimeType: mimeType
-          }
+            mimeType,
+          },
         });
       }
 
-      const promptText = `
-Analyze the following song's artistry, sound, or words, and generate a fully realized structured storyplot with deep character development.
+      const promptText = `Analyze the supplied song (lyrics, audio recording if present, and artistic context) and compose a complete, publication-grade literary story adaptation.
 
-${lyrics ? `LYRICS / SONG WORDS:\n${lyrics}\n\n` : ''}
-${context ? `CONTEXT / SONG OR ARTIST PROFILE / NOTES:\n${context}\n\n` : ''}
+${lyrics ? `LYRICS:\n${lyrics}\n` : ""}
+${context ? `ARTIST / CONTEXT NOTES:\n${context}\n` : ""}
+ADAPTATION DIRECTIVES:
+- Literary Genre: ${storySettings?.genre || "Adaptive (match song style)"}
+- Narrative Tone: ${storySettings?.tone || "Adaptive (match song style)"}
+- Historical Era / Setting: ${storySettings?.era || "Adaptive (match song style)"}
 
-STORYPLOT TARGET SETTINGS:
-- Desired Genre: ${storySettings?.genre || 'Adaptive (match song style)'}
-- Narrative Tone: ${storySettings?.tone || 'Adaptive (match song style)'}
-- Core Era/Setting Concept: ${storySettings?.era || 'Adaptive (match song style)'}
-
-INSTRUCTIONS:
-1. Decode the themes, emotional arc, storytelling style, literal meaning, and deep hidden meaning of this track, including metaphors and artistic subtext.
-2. Develop a standalone fictional story plot inspired by this analytical understanding.
-3. Design a distinct Protagonist (name, role, deep backstory, transformational arc, specific traits) and at least 2 detailed Supporting Characters.
-4. Layout the plot across 4 to 6 Chapters (or narrative phases) inspired by the song's verse-chorus-outro progression. Include what lyrics or audio cue (sonic changes, beat switches, instrumentation) inspired that phase, the summary, and the emotional beat.
-5. Create a poetic, emotionally matching conclusion.
-6. Connect specific lyric quotes, lines, or auditory descriptors (e.g. guitar solos, tempo drops, raw vocals) directly to their literal narrative translation.
-7. Write 3 actionable follow-up prompt questions the user can choose to explore this story world further.
-`;
+REQUIREMENTS:
+1. Perform a nuanced musicological and literary decoding: literal narrative, symbolic subtext, emotional arc, storytelling style, musical/rhythmic cues, and 4–6 themes.
+2. Construct a standalone literary story plot with a distinctive title, compelling logline, central conflict, sensory-rich setting, protagonist (with desire, fatal flaw, backstory, arc, and traits), and 2–3 well-drawn supporting characters.
+3. Structure 5 to 6 chronological chapters mapped directly to musical movements (e.g., Intro, Verse I, Pre-Chorus, Chorus, Bridge, Outro), each with an honest tensionScore (15–100) tracing the dramatic rise and fall.
+4. Provide 4 to 6 concrete Lyrical Connections translating specific quotes or sonic moments into story elements.
+5. Provide 4 specific, evocative Scene Desk prompts to draft scenes, dialogue, monologues, or an alternate finale.`;
 
       contentsParts.push({ text: promptText });
 
-      const response = await ai.models.generateContent({
-        model: "gemini-3.5-flash",
-        contents: contentsParts,
-        config: {
-          systemInstruction: "You are a master literary analyst, musicologist, and novelist. You excel at extracting deep symbolic meaning from songs and mapping their narrative structures, instrumentation cues, and emotional arcs into cohesive, profound story plots with detailed character development.",
-          responseMimeType: "application/json",
-          responseSchema: responseSchema,
-          temperature: 1.0,
-        }
-      });
+      const response = await withRetry(() =>
+        ai.models.generateContent({
+          model: "gemini-4-hydrogen",
+          contents: { parts: contentsParts },
+          config: {
+            systemInstruction:
+              "You are a prestige literary editor, musicologist, and novelist. You decode songs with depth and restraint, translating lyrical subtext and acoustic dynamics into vivid, cohesive story plots without clichés.",
+            responseMimeType: "application/json",
+            responseSchema: analyzeResponseSchema,
+          },
+        })
+      );
 
       const responseText = response.text;
       if (!responseText) {
-        throw new Error("Empty response received from the Gemini model.");
+        throw new Error("The model returned an empty response.");
       }
 
-      const resultData = JSON.parse(responseText.trim());
-      return res.json(resultData);
-
+      const parsed = JSON.parse(responseText.trim());
+      return res.json(parsed);
     } catch (err: any) {
-      console.error("Analysis failed:", err);
-      return res.status(500).json({
-        error: err.message || "An unexpected error occurred during audio or lyrics analysis."
+      console.error("Analysis error:", err);
+      const status = typeof err?.status === "number" && err.status >= 400 && err.status < 600 ? err.status : 500;
+      return res.status(status).json({
+        error: err?.message || "Failed to analyze the track. Please try again.",
       });
     }
   });
 
-  app.post("/api/expand", async (req, res) => {
+  // 2. Transcribe Audio -> Lyrics (gemini-3.5-transcribe)
+  app.post("/api/transcribe", async (req, res) => {
     try {
-      const { storyPlot, songAnalysis, query } = req.body;
-
-      if (!storyPlot || !query) {
-        return res.status(400).json({ error: "Missing required story details or query parameter." });
+      const { fileData, mimeType } = req.body;
+      if (!fileData || !mimeType) {
+        return res.status(400).json({ error: "An uploaded audio track is required for transcription." });
       }
-
-      console.log(`Starting plot expansion query: "${query}" for story: "${storyPlot.title}"`);
 
       const ai = getGeminiClient();
+      const response = await withRetry(() =>
+        ai.models.generateContent({
+          model: "gemini-3.5-transcribe",
+          contents: {
+            parts: [
+              {
+                inlineData: {
+                  mimeType,
+                  data: fileData,
+                },
+              },
+              {
+                text: "Transcribe the spoken or sung lyrics from this audio track accurately, formatted into natural verse and chorus line breaks. Output only the lyrics text.",
+              },
+            ],
+          },
+        })
+      );
 
-      const promptText = `
-Given the following fictional storyplot and its lyrical analysis, address the user's special expansion scene request or instruction.
-
-STORYPLOT CONTEXT:
-- Title: ${storyPlot.title}
-- Genre: ${storyPlot.genre}
-- Setting: ${storyPlot.setting?.description} (Era: ${storyPlot.setting?.era}, Mood: ${storyPlot.setting?.mood})
-- Protagonist: ${storyPlot.protagonist?.name} (${storyPlot.protagonist?.role}) 
-  * Backstory: ${storyPlot.protagonist?.backStory}
-  * Arc: ${storyPlot.protagonist?.arc}
-- Discovered Themes: ${songAnalysis?.themes ? songAnalysis.themes.join(", ") : "Adapted lyrical metrics"}
-
-USER EXPANSION INSTRUCTION / TASK:
-"${query}"
-
-INSTRUCTIONS:
-Compose engaging, high-quality, emotionally evocative draft scenery or character dialogue prose (approximately 250-450 words) addressing the instruction. Focus purely on writing rich literary prose. Use highly vivid, atmospheric descriptions and realistic character dialogue matching the tone and world. Do NOT insert any conversational conversational meta-commentary, introduction headers, lists, or conclusions. Provide only the direct prose.
-`;
-
-      const response = await ai.models.generateContent({
-        model: "gemini-3.5-flash",
-        contents: promptText,
-        config: {
-          systemInstruction: "You are a master creative novelist and dialogue scriptwriter. You excel at turning high-level storyplot structures, song lyrics, and character roles into fully drafted prose, descriptive descriptions, and cinematic conversations.",
-          temperature: 1.0,
-        }
-      });
-
-      const responseText = response.text;
-      if (!responseText) {
-        throw new Error("Empty response received from the Gemini model during plot expansion.");
+      const transcript = response.text?.trim();
+      if (!transcript) {
+        throw new Error("No vocals or lyrics could be extracted from this recording.");
       }
 
-      return res.json({ prose: responseText.trim() });
-
+      return res.json({ lyrics: transcript });
     } catch (err: any) {
-      console.error("Prose expansion failed:", err);
-      return res.status(500).json({
-        error: err.message || "An unexpected error occurred during prose generation."
+      console.error("Transcription error:", err);
+      const status = typeof err?.status === "number" && err.status >= 400 && err.status < 600 ? err.status : 500;
+      return res.status(status).json({
+        error: err?.message || "Audio transcription failed.",
       });
     }
   });
 
-  // Serve static files in production
+  // 3. Streaming Scene Desk Expansion (gemini-4-hydrogen, SSE stream)
+  app.post("/api/expand", async (req, res) => {
+    try {
+      const { storyPlot, songAnalysis, query, mode = "prose", stream = true } = req.body;
+
+      if (!storyPlot || !query?.trim()) {
+        return res.status(400).json({ error: "Story context and a scene prompt are required." });
+      }
+
+      const ai = getGeminiClient();
+      const modeDirective = MODE_INSTRUCTIONS[mode] || MODE_INSTRUCTIONS.prose;
+
+      const chaptersOutline = Array.isArray(storyPlot.chapters)
+        ? storyPlot.chapters
+            .map((ch: any, i: number) => `${i + 1}. ${ch.title} (${ch.songSection || "Movement"}): ${ch.summary}`)
+            .join("\n")
+        : "";
+
+      const promptText = `STORY DOSSIER:
+- Title: ${storyPlot.title}
+- Genre: ${storyPlot.genre}
+- Logline: ${storyPlot.logline || "N/A"}
+- Setting: ${storyPlot.setting?.description} (Era: ${storyPlot.setting?.era}, Mood: ${storyPlot.setting?.mood})
+- Protagonist: ${storyPlot.protagonist?.name} (${storyPlot.protagonist?.role})
+  Desire: ${storyPlot.protagonist?.desire || "Unstated"}
+  Flaw: ${storyPlot.protagonist?.flaw || "Unstated"}
+  Backstory: ${storyPlot.protagonist?.backStory}
+  Arc: ${storyPlot.protagonist?.arc}
+- Themes: ${songAnalysis?.themes ? songAnalysis.themes.join(", ") : "Adapted lyrical motifs"}
+${chaptersOutline ? `\nCHAPTERS:\n${chaptersOutline}\n` : ""}
+WRITER'S PROMPT:
+"${query.trim()}"
+
+FORMAT INSTRUCTION:
+${modeDirective}`;
+
+      const systemInstruction =
+        "You are an acclaimed literary novelist and screenwriter. Draft immersive, restrained, emotionally resonant scenes that honor the story dossier and song motifs. Never include conversational introductions or wrap-up notes.";
+
+      if (!stream) {
+        const response = await withRetry(() =>
+          ai.models.generateContent({
+            model: "gemini-4-hydrogen",
+            contents: promptText,
+            config: { systemInstruction },
+          })
+        );
+        return res.json({ prose: (response.text || "").trim() });
+      }
+
+      res.setHeader("Content-Type", "text/event-stream; charset=utf-8");
+      res.setHeader("Cache-Control", "no-cache, no-transform");
+      res.setHeader("Connection", "keep-alive");
+
+      const responseStream = await ai.models.generateContentStream({
+        model: "gemini-4-hydrogen",
+        contents: promptText,
+        config: { systemInstruction },
+      });
+
+      for await (const chunk of responseStream) {
+        const text = chunk.text;
+        if (text) {
+          res.write(`data: ${JSON.stringify({ chunk: text })}\n\n`);
+        }
+      }
+
+      res.write(`data: ${JSON.stringify({ done: true })}\n\n`);
+      return res.end();
+    } catch (err: any) {
+      console.error("Scene expansion error:", err);
+      if (res.headersSent) {
+        res.write(`data: ${JSON.stringify({ error: err?.message || "Streaming failed." })}\n\n`);
+        return res.end();
+      }
+      const status = typeof err?.status === "number" && err.status >= 400 && err.status < 600 ? err.status : 500;
+      return res.status(status).json({
+        error: err?.message || "Failed to draft scene.",
+      });
+    }
+  });
+
+  // 4. Narrate Scene Audio (gemini-3.8-flash-lite-tts -> unary complete WAV)
+  app.post("/api/narrate", async (req, res) => {
+    try {
+      const { text, voice = "Charon", mood } = req.body;
+      if (!text?.trim()) {
+        return res.status(400).json({ error: "Scene text is required for audio narration." });
+      }
+
+      const selectedVoice = VALID_VOICES.has(voice) ? voice : "Charon";
+      // Keep narration snippet well-paced and crisp (up to ~1800 chars)
+      const trimmedText = text.trim().slice(0, 1800);
+      const stylePrompt = mood
+        ? `Measured literary audiobook narrator with a ${mood.toLowerCase()} atmosphere`
+        : "Measured, intimate literary audiobook narrator with crisp diction and natural pauses";
+
+      const ai = getGeminiClient();
+      const response = await withRetry(() =>
+        ai.models.generateContent({
+          model: "gemini-3.8-flash-lite-tts",
+          contents: [
+            {
+              role: "user",
+              parts: [
+                {
+                  text: trimmedText,
+                  speechMetadata: {
+                    style: stylePrompt,
+                  },
+                },
+              ],
+            },
+          ],
+          config: {
+            responseModalities: ["AUDIO"],
+            speechConfig: {
+              voiceConfig: {
+                prebuiltVoiceConfig: { voiceName: selectedVoice },
+              },
+            },
+          },
+        })
+      );
+
+      const base64Audio = response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
+      if (!base64Audio) {
+        throw new Error("Audio narration model returned no audio output.");
+      }
+
+      return res.json({
+        audioBase64: base64Audio,
+        mimeType: "audio/wav",
+        voice: selectedVoice,
+      });
+    } catch (err: any) {
+      console.error("Narration error:", err);
+      const status = typeof err?.status === "number" && err.status >= 400 && err.status < 600 ? err.status : 500;
+      return res.status(status).json({
+        error: err?.message || "Failed to generate audio narration.",
+      });
+    }
+  });
+
+  // Serve Vite middleware in dev or static dist in production
   if (process.env.NODE_ENV !== "production") {
     const vite = await createViteServer({
       server: { middlewareMode: true },
@@ -297,18 +533,18 @@ Compose engaging, high-quality, emotionally evocative draft scenery or character
     });
     app.use(vite.middlewares);
   } else {
-    const distPath = path.join(process.cwd(), 'dist');
+    const distPath = path.join(process.cwd(), "dist");
     app.use(express.static(distPath));
-    app.get('*', (req, res) => {
-      res.sendFile(path.join(distPath, 'index.html'));
+    app.get("*", (_req, res) => {
+      res.sendFile(path.join(distPath, "index.html"));
     });
   }
 
   app.listen(PORT, "0.0.0.0", () => {
-    console.log(`Analytical Audio Analyzer Server listening on port ${PORT}`);
+    console.log(`Sonic Script server listening on port ${PORT}`);
   });
 }
 
 startServer().catch((e) => {
-  console.error("Critical server compilation and start failure:", e);
+  console.error("Server failed to start:", e);
 });
