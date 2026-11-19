@@ -1,0 +1,6 @@
+{
+  "name": "Analytical Audio Analyzer",
+  "description": "Analyze song audio, lyrics, and context to uncover underlying meaning and automatically write structured narrative storyplots with character development.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
